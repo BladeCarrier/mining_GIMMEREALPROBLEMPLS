@@ -64,7 +64,7 @@ Xts = imputer.transform(Xts)
 indTransform = (0,1,2,3,4,5,7,8,9,10,12,13,16,19,21,23,26)
 Xtrans = np.log(1 / (1 + X[:, indTransform]))
 X = np.hstack((X, Xtrans))
-XtransTest = np.log(1 / (1 + Xtest[:, indTransform]))
+XtransTest = np.log(1 / (1 + Xts[:, indTransform]))
 Xts = np.hstack((Xts, XtransTest))
 
 # подогнать вариансы.
@@ -80,7 +80,7 @@ print "model init"
 #3) леса на нижнем уровне = быстрый параллельный бэггинг нахаляву. Все плюшки прилагаются. Эмпирически круче простого буста
 #4) параметры подсказал Ктулху и форум.ещё раз тренить 6000 деревьев я не буду.
 rf = ExtraTreesClassifier(
-            n_estimators = 300,
+            n_estimators = 3,#00,
             max_features = 30,
             max_depth = 12,
             min_samples_leaf = 100,
@@ -88,7 +88,7 @@ rf = ExtraTreesClassifier(
             verbose = 1,
             n_jobs = -1)
 classifier = AdaBoostClassifier(
-        n_estimators = 20,
+        n_estimators = 2,#0,
         learning_rate = 0.75,
         base_estimator = rf)
 print "model fit"
@@ -106,7 +106,7 @@ Yts_sig = Yts_pred > cut
 
 print "Saving results"
 #пишем csv
-idsProbs = np.transpose(np.vstack((idsTest, Yts_pred)))
+idsProbs = np.transpose(np.vstack((idstest, Yts_pred)))
 idsProbs = np.array(sorted(idsProbs, key = lambda x: -x[1]))
 idsRanks = np.hstack((
     idsProbs,
