@@ -49,7 +49,7 @@ testdata = np.loadtxt('test.csv', \
     skiprows=1)
 
 idstest = testdata[:,0]
-Xtest = testdata[:,1:31]
+Xts = testdata[:,1:31]
 W = data[:,31]
 
 print "Learning..."
@@ -59,12 +59,12 @@ print "doing preproc"
 
 imputer = Imputer(missing_values = -999.0, strategy = 'most_frequent')
 X = imputer.fit_transform(X)
-Xtest = imputer.transform(Xtest)
+Xts = imputer.transform(Xts)
 
 indTransform = (0,1,2,3,4,5,7,8,9,10,12,13,16,19,21,23,26)
 Xtrans = np.log(1 / (1 + X[:, indTransform]))
 X = np.hstack((X, Xtrans))
-XtransTest = np.log(1 / (1 + X_test[:, indTransform]))
+XtransTest = np.log(1 / (1 + Xtest[:, indTransform]))
 Xts = np.hstack((Xts, XtransTest))
 
 # подогнать вариансы.
