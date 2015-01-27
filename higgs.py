@@ -80,7 +80,7 @@ print "model init"
 #3) леса на нижнем уровне = быстрый параллельный бэггинг нахаляву. Все плюшки прилагаются. Эмпирически круче простого буста
 #4) параметры подсказал Ктулху и форум.ещё раз тренить 6000 деревьев я не буду.
 rf = ExtraTreesClassifier(
-            n_estimators = 3,#00,
+            n_estimators = 300,
             max_features = 30,
             max_depth = 12,
             min_samples_leaf = 100,
@@ -88,7 +88,7 @@ rf = ExtraTreesClassifier(
             verbose = 1,
             n_jobs = -1)
 classifier = AdaBoostClassifier(
-        n_estimators = 2,#0,
+        n_estimators = 20,
         learning_rate = 0.75,
         base_estimator = rf)
 print "model fit"
