@@ -88,13 +88,6 @@ def train_splitted_boosts( trees,
                            breadth,
                            nTrees_leaf,
                            trees_sample_size,
-                           wheel_up_times = 0,
-                           wheel_learning_rate = None,
-                           wheel_learning_rate_decay = None,
-                           wheel_nTrees_leaf = None,
-                           wheel_sample_increase = None,
-                           wheel_regularizer = None,
-                           wheel_randomize = True,
                            verbose = True,
                            learning_rate_decay = 1.,
                            trees_sample_increase = 0,
@@ -102,28 +95,25 @@ def train_splitted_boosts( trees,
                            weights_outside_leaf = 0.,
                            inclusion_outside_leaf = 0.,
                            use_joblib = False,
-                           n_jobs = -1):
+                           use_joblib_inner = False,
+                           joblib_method_inner = "threads",
+                           copy_pred_inner = False,
+                           n_jobs = -1,
+                           n_jobs_inner=-1,
+                           initialTrees= None):
     """
     make greedy prune for every leaf in split. I know i should be with kwargs
     """
+
     factories = split_upper(factory,criteria,
                                    split_weights = weights_outside_leaf,
                                    split_inclusion= inclusion_outside_leaf)
-
-    if wheel_learning_rate == None:
-        wheel_learning_rate = learning_rate
-    if wheel_learning_rate_decay == None:
-        wheel_learning_rate_decay = learning_rate_decay
-    if wheel_nTrees_leaf ==None:
-        wheel_nTrees_leaf = nTrees_leaf
-    if wheel_sample_increase == None:
-        wheel_sample_increase = trees_sample_increase
-    if wheel_regularizer == None:
-        wheel_regularizer = regularizer
     
+    leaves = factories.keys()
+    if initialTrees == None:
+        initialTrees = {leaf:[] for leaf in leaves}
     
         
-    leaves = factories.keys()
     if not use_joblib:
         classis = []
         itr = 1
@@ -143,23 +133,14 @@ def train_splitted_boosts( trees,
                                verbose,
                                learning_rate_decay,
                                trees_sample_increase,
-                               regularizer
+                               regularizer = regularizer,
+                               use_joblib = use_joblib_inner,
+                               n_jobs = n_jobs_inner,
+                               joblib_method = joblib_method_inner,
+                               copy_pred = copy_pred_inner,
+                               initialBunch = initialTrees[leaf]
                                )
-            if wheel_up_times != 0:
-                if verbose:
-                    print "fortune-wheeling the trees"
-                classi = wheel_up_features_bfs (classi,
-                               trees,
-                               factories[leaf],
-                               loss,
-                               wheel_learning_rate,
-                               wheel_up_times,
-                               wheel_nTrees_leaf,
-                               verbose,
-                               wheel_learning_rate_decay,
-                               wheel_sample_increase,
-                               wheel_regularizer,
-                               random_walk = wheel_randomize)
+
             classis.append(classi)
     else: #use joblib
         tasks = [joblib.delayed(greed_up_features_bfs)(
@@ -173,33 +154,108 @@ def train_splitted_boosts( trees,
                                False,
                                learning_rate_decay,
                                trees_sample_increase,
-                               regularizer
+                               regularizer = regularizer,
+                               use_joblib = use_joblib_inner,
+                               n_jobs = n_jobs_inner,
+                               joblib_method = joblib_method_inner,
+                               copy_pred = copy_pred_inner,
+                               initialBunch = initialTrees[leaf]
                                )for leaf in leaves]
         classis = joblib.Parallel(n_jobs = n_jobs,
                                   backend = "threading",
                                   verbose=verbose)(tasks)
-        if wheel_up_times != 0:
-            if verbose:
-                print "fortune-wheeling the trees"
-            tasks = [joblib.delayed(wheel_up_features_bfs)(
-                                   classis[i],
-                                   trees,
-                                   factories[leaves[i]],
-                                   loss,
-                                   wheel_learning_rate,
-                                   wheel_up_times,
-                                   wheel_nTrees_leaf,
-                                   False,
-                                   wheel_learning_rate_decay,
-                                   wheel_sample_increase,
-                                   wheel_regularizer,
-                                   random_walk = wheel_randomize
-                                   )for i in range(len(leaves))]
-            classis = joblib.Parallel(n_jobs = n_jobs,
-                                      backend = "threading",
-                                      verbose=verbose)(tasks)
+
 
     return {leaves[i]:classis[i] for i in range(len(leaves))}
+    
+    
+def wheel_splitted_boosts( initialTrees,
+                           trees,
+                           factory,
+                           criteria,
+                           loss,
+                           learning_rate,
+                           wheel_up_times,
+                           trees_sample_size,
+                           random_walk= True,
+                           verbose = True,
+                           learning_rate_decay = 1.,
+                           trees_sample_increase = 0,
+                           regularizer = 0.,
+                           weights_outside_leaf = 0.,
+                           inclusion_outside_leaf = 0.,
+                           use_joblib = False,
+                           use_joblib_inner = False,
+                           joblib_method_inner = "threads",
+                           copy_pred_inner = False,
+                           n_jobs = -1,
+                           n_jobs_inner=-1,
+                           ):
+    """
+    make greedy prune for every leaf in split. I know i should be with kwargs
+    """
+
+    factories = split_upper(factory,criteria,
+                                   split_weights = weights_outside_leaf,
+                                   split_inclusion= inclusion_outside_leaf)
+    
+    leaves = factories.keys()
+
+    
+        
+    if not use_joblib:
+        classis = []
+        itr = 1
+        for leaf in leaves:
+            if verbose:
+                print "\n\nNow wheeling leaf ",leaf, itr,"/",len(leaves)
+                print "n_ samples at leaf = ", factories[leaf].n_events
+                itr +=1
+            classi = wheel_up_features_bfs(
+                               initialTrees[leaf],
+                               trees,
+                               factories[leaf],
+                               loss,
+                               learning_rate,
+                               wheel_up_times,
+                               trees_sample_size,
+                               verbose = verbose,
+                               learning_rate_decay = learning_rate_decay,
+                               trees_sample_increase = trees_sample_increase,
+                               regularizer = regularizer,
+                               random_walk = random_walk,
+                               use_joblib = use_joblib_inner,
+                               n_jobs = n_jobs_inner,
+                               joblib_method = joblib_method_inner,
+                               copy_pred = copy_pred_inner)
+
+            classis.append(classi)
+    else: #use joblib
+        tasks = [joblib.delayed(wheel_up_features_bfs)(
+                               initialTrees[leaf],
+                               trees,
+                               factories[leaf],
+                               loss,
+                               learning_rate,
+                               wheel_up_times,
+                               trees_sample_size,
+                               verbose = False,
+                               learning_rate_decay = learning_rate_decay,
+                               trees_sample_increase = trees_sample_increase,
+                               regularizer = regularizer,
+                               random_walk = random_walk,
+                               use_joblib = use_joblib_inner,
+                               n_jobs = n_jobs_inner,
+                               joblib_method = joblib_method_inner,
+                               copy_pred = copy_pred_inner)for leaf in leaves]
+        classis = joblib.Parallel(n_jobs = n_jobs,
+                                  backend = "threading",
+                                  verbose=verbose)(tasks)
+
+
+    return {leaves[i]:classis[i] for i in range(len(leaves))}
+        
+
 
 def predict_splitted(factory,criteria,trees):
     """predict with a splitted trees boost"""

@@ -6,38 +6,59 @@ Created on Wed Apr 01 02:30:48 2015
 """
 
 from sklearn.externals import joblib
+
 import numpy as np
-import scipy as sp
 import random,copy
 
-def inthread_try_add(bunch,tree,factory,loss,margin,y_pred,learning_rate,regularizer):
-        '''in case of joblibification, use this (c)'''
+def _try_add(tree,factory,loss,margin,y_pred,learning_rate,regularizer):
+        """try to add a specific tree and see what happens to loss"""
         newTree = loss.update_leaves(factory,margin,tree,learning_rate,regularizer)
         newPred = y_pred + factory.predict([newTree])
         newLoss = np.sum(loss(factory,newPred))
         return newLoss,newTree,newPred
+def _inthread_try_add(trees,factory,loss,margin,y_pred,learning_rate,regularizer):
+    '''in case of joblibification, use this (c)'''
+    
+    return [_try_add(tree,factory,loss,margin,y_pred,learning_rate,regularizer) for tree in trees]
 
-def try_add1_bfs(bunch, allTrees,factory,learning_rate,loss,breadth,y_pred = None,regularizer = 0.):
+def try_add1_bfs(allTrees,factory,learning_rate,
+                 loss,breadth,y_pred,regularizer = 0.,
+                 use_joblib = False,n_jobs = -1):
     '''
     select best tree to add (1 step)
     '''
     y_sign = factory.labels_sign
-    if y_pred == None:
-        y_pred = factory.predict(bunch)
     margin = y_sign*y_pred
-    triples = [inthread_try_add(bunch,tree,factory,loss,margin,y_pred,learning_rate,regularizer) for tree in allTrees]   
+
+    if use_joblib:
+        if n_jobs < 0:
+            n_jobs = joblib.cpu_count()
+        
+        indices = [0]+[len(allTrees)*(i+1)/n_jobs for i in range(n_jobs)]
+        treeSections = [allTrees[indices[i]:indices[i+1]] for i in range(n_jobs)]
+
+        tasks = [joblib.delayed(_inthread_try_add)(
+                    treeSection,
+                    factory,
+                    loss,
+                    margin,
+                    y_pred,
+                    learning_rate,
+                    regularizer) for treeSection in treeSections]
+        _res = joblib.Parallel(n_jobs = n_jobs,
+                               backend = "multiprocessing")(tasks)
+        triples = reduce(lambda a,b:a+b, _res)
+
+    else:
+        triples = [_try_add(tree,factory,loss,margin,y_pred,learning_rate,regularizer) for tree in allTrees]   
+
+    
     triples.sort(key = lambda el: el[0])
     
-    bunches = []
-    preds = []
-    for triple in triples[:breadth]:
-        tree = triple[1]
-        pred = triple[2]
-        bunch = bunch+[tree]
-        bunches.append(bunch)
-        preds.append(pred)
 
-    return bunches,[triple[1] for triple in triples[:breadth]],[triple[0] for triple in triples[:breadth]],preds
+
+
+    return [triple[1] for triple in triples[:breadth]],[triple[0] for triple in triples[:breadth]],[triple[2] for triple in triples[:breadth]]
 
 
 def greed_up_features_bfs (trees,
@@ -50,16 +71,43 @@ def greed_up_features_bfs (trees,
                            verbose = True,
                            learning_rate_decay = 1.,
                            trees_sample_increase = 0,
-                           regularizer = 0.):
+                           regularizer = 0.,
+                           use_joblib = False,
+                           n_jobs = -1,
+                           joblib_method = "threads",
+                           copy_pred = False,
+                           initialBunch = []):
     """
     Iterative BFS over best ADD-1 results for [nTrees] iterations
     """
     allTrees = copy.copy(trees)
-    
-    trees_sample = np.array(random.sample(allTrees,trees_sample_size))
-    
-    bunches,additions,losses,preds = try_add1_bfs([],trees_sample,factory,learning_rate,loss,breadth,regularizer = regularizer)
+    if len(initialBunch)==0:
+        trees_sample = np.array(random.sample(allTrees,trees_sample_size))    
+        additions,losses,preds = try_add1_bfs(trees_sample,factory,learning_rate,loss,
+                                                      breadth,y_pred=factory.labels*0,regularizer = regularizer)
+        bunches = [[_added] for _added in additions]                                              
+    else:
+        bunches = [initialBunch]
+        preds = [factory.predict(initialBunch)]
+        losses = [np.sum(loss(factory,preds[0]))]
     bestScore = min(losses)
+
+    
+    if use_joblib:
+        if n_jobs < 0:
+            n_jobs = joblib.cpu_count()
+                
+        if joblib_method == "threads":
+            #create copies of data once to escape GIL forever
+            factory = [copy.deepcopy(factory) for i in range(n_jobs)]
+            loss = [copy.deepcopy(loss) for i in range(n_jobs)]
+
+        elif joblib_method == "processes":
+            pass
+        else:
+            raise ValueError, "joblib_method must be either 'threads' or 'processes'"
+    
+    
 
     if verbose:
         print "\niteration #",0," ntrees = ", len(bunches[0]),"\nbest loss = ",bestScore
@@ -76,8 +124,32 @@ def greed_up_features_bfs (trees,
         newPreds = []
         for bunch,pred in zip(bunches,preds):
             trees_sample = np.array(random.sample(allTrees,trees_sample_size))
-            _bunches,_additions,_losses,_preds = try_add1_bfs(bunch,trees_sample,factory,learning_rate,loss,
-                                                              breadth,pred,regularizer=regularizer)
+            
+            if use_joblib and joblib_method=="threads":
+                #split trees into sections
+                indices = [0]+[len(trees_sample)*(i+1)/n_jobs for i in range(n_jobs)]
+                treeSections = [trees_sample[indices[i]:indices[i+1]] for i in range(n_jobs)]
+                if copy_pred:
+                    pred = [copy.deepcopy(pred) for i in range(n_jobs)]
+                else:
+                    pred = [pred for i in range(n_jobs)]
+
+                #execute sections in parallel
+                tasks = [joblib.delayed(try_add1_bfs)(treeSections[ithread],factory[ithread],
+                                                              learning_rate,loss[ithread],
+                                                              breadth,pred[ithread],regularizer=regularizer,
+                                                              use_joblib=False)
+                                                    for ithread in range(n_jobs)]
+                                                        
+                _res = joblib.Parallel(n_jobs = n_jobs,
+                               backend = "threading")(tasks)
+                _additions,_losses,_preds = reduce(lambda a,b:[a[i]+b[i] for i in range(3)], _res)
+                
+            else:
+                _additions,_losses,_preds = try_add1_bfs(trees_sample,factory,learning_rate,loss,
+                                                              breadth,pred,regularizer=regularizer,
+                                                              use_joblib=use_joblib,n_jobs=n_jobs)
+            _bunches = [bunch+[_added] for _added in _additions]
             newBunches+=_bunches
             newScores += _losses
             newPreds += _preds
@@ -105,7 +177,7 @@ def greed_up_features_bfs (trees,
         if verbose:
             print "\niteration #",itr," ntrees = ", len(bunches[0]),"\nbest loss = ", bestScore,"\nlast loss = ",newBestScore
             print "learning_rate = ", learning_rate
-            print "sample_size", trees_sample_size          
+            print "sample_size", trees_sample_size       
     return bunches[0]
 
 
@@ -120,7 +192,11 @@ def wheel_up_features_bfs (initialBunch,
                            learning_rate_decay = 1.,
                            trees_sample_increase = 0,
                            regularizer = 0.,
-                           random_walk = True):
+                           random_walk = True,
+                           use_joblib = False,
+                           n_jobs = -1,
+                           joblib_method = "threads",
+                           copy_pred = False):
     """
     Iterative BFS over best ADD-1 results for [nTrees] iterations
     """
@@ -129,26 +205,66 @@ def wheel_up_features_bfs (initialBunch,
     bunch = copy.copy(initialBunch)
     pred = factory.predict(bunch)
     bestScore = sum(loss(factory,pred))
+    
+    if use_joblib:
+        if n_jobs < 0:
+            n_jobs = joblib.cpu_count()
+                
+        if joblib_method == "threads":
+            #create copies of data once to escape GIL forever
+            factory = [copy.deepcopy(factory) for i in range(n_jobs)]
+            loss = [copy.deepcopy(loss) for i in range(n_jobs)]
 
+        elif joblib_method == "processes":
+            pass
+        else:
+            raise ValueError, "joblib_method must be either 'threads' or 'processes'"
+    
+  
     if verbose:
         print "\niteration #",0," ntrees = ", len(bunch),"\nbest loss = ",bestScore
         print "learning_rate = ", learning_rate
         print "sample_size", trees_sample_size
 
     
-    for i in xrange(1,nIters+1):
+    for itr in xrange(1,nIters+1):
         change_index= random.randint(0,len(bunch)-1) if random_walk else  (i-1)%len(bunch)
         trees_sample = random.sample(allTrees,trees_sample_size)+ [bunch[change_index]]
         bunch_wo = copy.copy(bunch)
         bunch_wo.pop(change_index)
-        newBunches,_,newScores,newPreds = try_add1_bfs(bunch_wo,
-                                                     trees_sample,
-                                                     factory,
-                                                     learning_rate,
-                                                     loss,
-                                                     1,
-                                                     None,#pred - factory.predict([bunch[change_index]]),
-                                                     regularizer=regularizer)
+
+        if use_joblib and joblib_method=="threads":
+            #split trees into sections
+            indices = [0]+[len(trees_sample)*(i+1)/n_jobs for i in range(n_jobs)]
+            treeSections = [trees_sample[indices[i]:indices[i+1]] for i in range(n_jobs)]
+            
+            pred_wo = pred - factory[0].predict([bunch[change_index]])
+
+            if copy_pred:
+                pred_wo = [copy.deepcopy(pred) for i in range(n_jobs)]
+            else:
+                pred_wo = [pred for i in range(n_jobs)]
+
+            #execute sections in parallel
+            tasks = [joblib.delayed(try_add1_bfs)(treeSections[ithread],factory[ithread],
+                                                          learning_rate,loss[ithread],
+                                                          1,pred_wo[ithread],regularizer=regularizer,
+                                                          use_joblib=False)
+                                                for ithread in range(n_jobs)]
+                                                    
+            _res = joblib.Parallel(n_jobs = n_jobs,
+                           backend = "threading")(tasks)
+            _additions,newScores,newPreds = reduce(lambda a,b:[a[i]+b[i] for i in range(3)], _res)
+            
+        else:
+            pred_wo = pred - factory.predict([bunch[change_index]])
+
+            _additions,newScores,newPreds = try_add1_bfs(trees_sample,factory,learning_rate,loss,
+                                                          1,pred_wo,regularizer=regularizer,
+                                                          use_joblib=use_joblib,n_jobs=n_jobs)
+        newBunches = [bunch_wo+[_added] for _added in _additions]
+        
+
         
         learning_rate *= learning_rate_decay
         trees_sample_size = min(len(allTrees),trees_sample_size + trees_sample_increase)
@@ -168,7 +284,7 @@ def wheel_up_features_bfs (initialBunch,
         
         
         if verbose:
-            print "\niteration #",i," ntrees = ", len(bunch),"\nbest loss = ", bestScore,"\nlast loss = ",newBestScore
+            print "\niteration #",itr," ntrees = ", len(bunch),"\nbest loss = ", bestScore,"\nlast loss = ",newBestScore
             print "changed index",change_index
             print "learning_rate = ", learning_rate
             print "sample_size", trees_sample_size          

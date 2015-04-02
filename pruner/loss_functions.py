@@ -6,8 +6,10 @@ Created on Wed Apr 01 02:30:18 2015
 """
 import numpy as np
 import scipy as sp
+from scipy.special import expit
+
 import copy
-class LogLoss:
+class _LogLoss:
     def __call__(self,factory, pred = None, margin = None):
         """
         i know it isn't; send either prediction or margin
@@ -24,7 +26,7 @@ class LogLoss:
         leaf_values = tree[2]*0
         normalizers = np.zeros(leaf_values.shape[0])
 
-        expt = sp.special.expit(-margin)
+        expt = expit(-margin)
         prec_value = factory.weights*factory.labels_sign*expt
         prec_norm = (expt) * (1 - expt)*factory.weights
         
@@ -38,7 +40,7 @@ class LogLoss:
         newtree = tuple([copy.copy(i) for i in tree[:2]] + [leaf_values*lrate])
 
         return newtree
-LogLoss = LogLoss()
+LogLoss = _LogLoss()
 
 def entropy(distribution):
     """just some entropy"""
