@@ -5,7 +5,6 @@ Created on Wed Apr 01 02:30:18 2015
 @author: ayanami
 """
 import numpy as np
-import scipy as sp
 from scipy.special import expit
 
 import copy

@@ -144,11 +144,14 @@ def greed_up_features_bfs (trees,
                 _res = joblib.Parallel(n_jobs = n_jobs,
                                backend = "threading")(tasks)
                 _additions,_losses,_preds = reduce(lambda a,b:[a[i]+b[i] for i in range(3)], _res)
+
                 
             else:
                 _additions,_losses,_preds = try_add1_bfs(trees_sample,factory,learning_rate,loss,
                                                               breadth,pred,regularizer=regularizer,
                                                               use_joblib=use_joblib,n_jobs=n_jobs)
+                
+
             _bunches = [bunch+[_added] for _added in _additions]
             newBunches+=_bunches
             newScores += _losses
@@ -159,7 +162,6 @@ def greed_up_features_bfs (trees,
             
         triples = zip(newScores,newBunches,newPreds)
         triples.sort(key = lambda el: el[0])
-        
         
         newBestScore = min(newScores)
         
@@ -259,7 +261,8 @@ def wheel_up_features_bfs (initialBunch,
         else:
             pred_wo = pred - factory.predict([bunch[change_index]])
 
-            _additions,newScores,newPreds = try_add1_bfs(trees_sample,factory,learning_rate,loss,
+            _additions,newScores,newPreds = try_add1_bfs(trees_sample,factory,
+                                                         learning_rate,loss,
                                                           1,pred_wo,regularizer=regularizer,
                                                           use_joblib=use_joblib,n_jobs=n_jobs)
         newBunches = [bunch_wo+[_added] for _added in _additions]
@@ -271,6 +274,7 @@ def wheel_up_features_bfs (initialBunch,
             
         triples = zip(newScores,newBunches,newPreds)
         triples.sort(key = lambda el: el[0])
+
         newBestScore = min(newScores)
         
         if newBestScore > bestScore:
