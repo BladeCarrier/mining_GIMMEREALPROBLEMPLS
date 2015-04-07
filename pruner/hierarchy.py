@@ -95,6 +95,7 @@ def train_splitted_boosts( trees,
                            weights_outside_leaf = 0.,
                            inclusion_outside_leaf = 0.,
                            use_joblib = False,
+                           joblib_method = "threads",
                            use_joblib_inner = False,
                            joblib_method_inner = "threads",
                            copy_pred_inner = False,
@@ -143,10 +144,12 @@ def train_splitted_boosts( trees,
 
             classis.append(classi)
     else: #use joblib
+        if joblib_method not in ["threads","processes"]:
+            raise ValueError, "please specify a valid backend type: threads or processes"
         tasks = [joblib.delayed(greed_up_features_bfs)(
-                               trees,
+                               copy.deepcopy(trees),
                                factories[leaf],
-                               loss,
+                               copy.deepcopy(loss),
                                learning_rate,
                                breadth,
                                nTrees_leaf,
@@ -159,10 +162,12 @@ def train_splitted_boosts( trees,
                                n_jobs = n_jobs_inner,
                                joblib_method = joblib_method_inner,
                                copy_pred = copy_pred_inner,
-                               initialBunch = initialTrees[leaf]
+                               initialBunch = copy.deepcopy(initialTrees[leaf])#just in case it's the same...
                                )for leaf in leaves]
+                               
+        
         classis = joblib.Parallel(n_jobs = n_jobs,
-                                  backend = "threading",
+                                  backend = "threading" if joblib_method == "threads" else "multiprocessing",
                                   verbose=verbose)(tasks)
 
 

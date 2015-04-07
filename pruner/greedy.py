@@ -6,7 +6,6 @@ Created on Wed Apr 01 02:30:48 2015
 """
 
 from sklearn.externals import joblib
-
 import numpy as np
 import random,copy
 
@@ -14,7 +13,7 @@ def _try_add(tree,factory,loss,margin,y_pred,learning_rate,regularizer):
         """try to add a specific tree and see what happens to loss"""
         newTree = loss.update_leaves(factory,margin,tree,learning_rate,regularizer)
         newPred = y_pred + factory.predict([newTree])
-        newLoss = np.sum(loss(factory,newPred))
+        newLoss = loss.score(factory,newPred)
         return newLoss,newTree,newPred
 def _inthread_try_add(trees,factory,loss,margin,y_pred,learning_rate,regularizer):
     '''in case of joblibification, use this (c)'''

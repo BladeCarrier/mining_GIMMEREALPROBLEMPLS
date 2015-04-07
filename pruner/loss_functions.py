@@ -6,6 +6,7 @@ Created on Wed Apr 01 02:30:18 2015
 """
 import numpy as np
 from scipy.special import expit
+from sklearn import metrics
 
 import copy
 class _LogLoss:
@@ -39,8 +40,23 @@ class _LogLoss:
         newtree = tuple([copy.copy(i) for i in tree[:2]] + [leaf_values*lrate])
 
         return newtree
+    def score(self, factory, y_pred):
+        """
+        compute one-number score for the prediction. The less, the better.
+        """
+        return np.sum(self(factory,y_pred))
+class _LogLoss_auc(_LogLoss):
+    """black magic with AUC incorporation"""
+    def __init__(self,power = 1.,norm = 0.):
+        self.power = power
+        self.norm = norm
+    def score(self,factory,y_pred):
+        sumLoss = np.sum(self(factory,y_pred))
+        auc = metrics.roc_auc_score(factory.labels,y_pred,sample_weight = factory.weights)
+        return sumLoss/(auc**self.power+self.norm)
+        
 LogLoss = _LogLoss()
-
+LogLossAuc = _LogLoss_auc()
 def entropy(distribution):
     """just some entropy"""
     logs = np.array(map(np.log,distribution))
