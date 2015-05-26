@@ -161,7 +161,7 @@ class BaggingRanker(BaggingRegressor):
                  n_estimators=10,
                  max_samples=1.0,
                  max_features=1.0,
-                 sample_whole_queries = False,
+                 sample_whole_queries = True,
                  bootstrap=True,
                  bootstrap_features=False,
                  oob_score=False,
