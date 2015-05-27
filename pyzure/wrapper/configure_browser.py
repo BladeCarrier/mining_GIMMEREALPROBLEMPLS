@@ -30,14 +30,16 @@ def phantomjs(path_to_binary):
     driver.set_window_size(1124, 850)
     return  driver
 
-def firefox(path_to_binary):
+def firefox_portable(path_to_binary):
     from selenium.webdriver.firefox.firefox_binary import FirefoxBinary
     firebox_binary = FirefoxBinary(path_to_binary)
     driver = wd.Firefox(firefox_binary=firebox_binary)
     driver.set_window_size(1124, 850)
     return  driver
-
-
+def firefox_default():
+    driver = wd.Firefox()
+    driver.set_window_size(1124, 850)
+    return driver
 
 
 

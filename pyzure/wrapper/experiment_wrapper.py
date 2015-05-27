@@ -39,8 +39,18 @@ class experiment_wrapper(base_wrapper):
             except: continue
             cse_btn.click()
             break
-        _apply_until_passes(self.wait_load,self.driver.find_element_by_css_selector,"#project-experiments-tabs")
+        while True:
+            try:           
+                tray = self.driver.find_element_by_css_selector(".fxs-drawertray-button")
+                tray.find_element_by_xpath("//img[@alt = 'Completed Progress']")
+                break
+            except: pass
+            try:
+                self.driver.find_element_by_css_selector("#bubble-close").click()
+                break
+            except:pass
         try:
+            time.sleep(self.wait_load)
             self.driver.find_element_by_css_selector("#bubble-close").click()
         except:pass
             
@@ -54,9 +64,11 @@ class experiment_wrapper(base_wrapper):
             pub_btn.click()
             break
         self.report("Publishing...")
-        time.sleep(self.wait_short)
-        tick = self.driver.find_element_by_css_selector(".fxs-confirmation-buttons > li:nth-child(1) > button:nth-child(1)")
-        tick.click()
+        time.sleep(self.wait_load)
+        try:
+            tick =  self.driver.find_element_by_css_selector(".fxs-confirmation-buttons > li:nth-child(1) > button:nth-child(1)")
+            tick.click()
+        except: pass
         if wait_finished:
             api_box =_apply_until_passes(self.wait_load,self.driver.find_element_by_css_selector,".fxs-copybutton-value > input:nth-child(1)")
             api_key= api_box.get_attribute("value")
@@ -74,14 +86,18 @@ class experiment_wrapper(base_wrapper):
         if location ==None:
             location = self.driver.find_element_by_css_selector(".xe-utilityPanelRoot")
         return location.find_element_by_xpath("//div[text() = '"+name+"']")
-    def deploy_dataset(self,dataset_name):
+    def deploy_dataset(self,dataset_name,folder = "My Datasets"):
         datasets = self.getPalette("Saved Datasets")
         datasets.click()
+        time.sleep(self.wait_short)
+        folder = self.getPalette(folder)
+        folder.click()
         time.sleep(self.wait_short)
         panel = self.driver.find_element_by_css_selector(".xe-utilityPanelRoot")
         dataset =panel.find_element_by_xpath("//flexfill[text() = '"+dataset_name+"']")
         chains = wd.ActionChains(self.driver)
         chains.double_click(dataset).perform()
+        folder.click()
         datasets.click()
         self.report("dataset",dataset_name,"deployed")
     def deploy_model(self,model_name,model_type = "Classification"):
